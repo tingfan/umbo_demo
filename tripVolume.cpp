@@ -1,3 +1,5 @@
+#include <opencv2/opencv.hpp>
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/io/openni2_grabber.h>
@@ -9,6 +11,7 @@
 #include "pcl/io/openni2/openni.h"
 #include <pcl/common/time.h> //fps calculations
 
+#include <opencv2/opencv.hpp>
 
 #include <pcl/console/parse.h>
 #define SHOW_FPS 1
@@ -42,17 +45,18 @@ public:
 	typedef pcl::PointCloud<pcl::PointXYZRGBA> Cloud;
 	typedef Cloud::ConstPtr CloudConstPtr;
 
-	OpenNIChangeViewer (double resolution, int mode, int noise_filter)
-	: cloud_viewer (new pcl::visualization::PCLVisualizer ("3D Camera")),
-	image_viewer (new pcl::visualization::ImageViewer ("2D Camera")),
-	rgb_data_ (0), rgb_data_size_ (0)
-	{
-		octree = new pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZRGBA>(resolution);
+	OpenNIChangeViewer(double resolution, int mode, int noise_filter) :
+			cloud_viewer(new pcl::visualization::PCLVisualizer("3D Camera")), image_viewer(
+					new pcl::visualization::ImageViewer("2D Camera")), rgb_data_(
+					0), rgb_data_size_(0) {
+		octree = new pcl::octree::OctreePointCloudChangeDetector<
+				pcl::PointXYZRGBA>(resolution);
 		mode_ = mode;
 		noise_filter_ = noise_filter;
 	}
 
 	void cloud_cb_(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr &cloud) {
+		FPS_CALC("cloud callback");
 		std::cerr << cloud->points.size() << " -- ";
 
 		// assign point cloud to octree
@@ -79,9 +83,15 @@ public:
 					new pcl::PointCloud<pcl::PointXYZRGBA>(*cloud));
 			filtered_cloud->points.reserve(newPointIdxVector->size());
 
+			//set interested ones to red.
 			for (std::vector<int>::iterator it = newPointIdxVector->begin();
-					it != newPointIdxVector->end(); it++)
+					it != newPointIdxVector->end(); it++) {
 				filtered_cloud->points[*it].rgba = 255 << 16;
+//				pcl::PointXYZRGBA& pt= filtered_cloud->points[*it];
+//				if(pt.z>1.0 && pt.z< 1.5)
+//					pt.rgba = 255 << 16;
+//				cout << pt.x << " " << pt.y << " " << pt.z << endl;
+			}
 			break;
 		case ONLYDIFF_MODE:
 			filtered_cloud.reset(new pcl::PointCloud<pcl::PointXYZRGBA>);
@@ -93,29 +103,34 @@ public:
 
 			break;
 		}
-		boost::mutex::scoped_lock lock(cloud_mutex_);
-		cloud_ = filtered_cloud;
 
+		{
+			boost::mutex::scoped_lock lock(cloud_mutex_);
+			cloud_ = filtered_cloud;
+		}
 		// switch buffers - reset tree
 		octree->switchBuffers();
 	}
 
-	void image_callback(const boost::shared_ptr<pcl::io::openni2::Image>& image) {
+	void image_callback(
+			const boost::shared_ptr<pcl::io::openni2::Image>& image) {
 		FPS_CALC("image callback");
 		{
 			boost::mutex::scoped_lock lock(image_mutex_);
 			image_ = image;
 		}
 
-		if (image->getEncoding() != pcl::io::openni2::Image::RGB) {
-			if (rgb_data_size_ < image->getWidth() * image->getHeight()) {
-				if (rgb_data_)
-					delete[] rgb_data_;
-				rgb_data_size_ = image->getWidth() * image->getHeight();
-				rgb_data_ = new unsigned char[rgb_data_size_ * 3];
-			}
-			image_->fillRGB(image_->getWidth(), image_->getHeight(), rgb_data_);
+//		if (image->getEncoding() != pcl::io::openni2::Image::RGB) {
+		if (rgb_data_size_ < image->getWidth() * image->getHeight()) {
+			if (rgb_data_)
+				delete[] rgb_data_;
+			rgb_data_size_ = image->getWidth() * image->getHeight();
+			rgb_data_ = new unsigned char[rgb_data_size_ * 3];
 		}
+
+		//convert to OpenCV
+		image_->fillRGB(image_->getWidth(), image_->getHeight(), rgb_data_);
+//		}
 	}
 
 	void run() {
@@ -133,6 +148,7 @@ public:
 		pcl::io::OpenNI2Grabber::Mode image_mode =
 				pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
 		pcl::io::OpenNI2Grabber grabber_(device_id, depth_mode, image_mode);
+//		cout << "Framerate:" << grabber_.getFramesPerSecond() << std::endl;
 
 		boost::function<
 				void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> cloud_cb =
@@ -151,17 +167,13 @@ public:
 		bool image_init = false;
 
 		grabber_.start();
-		//interface->start ();
-		while (!cloud_viewer->wasStopped()) {
-			cloud_viewer->spinOnce();
-
+		while (!cloud_viewer->wasStopped() && !image_viewer->wasStopped()) {
 			CloudConstPtr cloud;
 			if (cloud_mutex_.try_lock()) {
 				cloud_.swap(cloud);
 				cloud_mutex_.unlock();
 			}
 			if (cloud) {
-				//viewer.showCloud (cloud);
 				if (!cloud_init) {
 					cloud_viewer->setPosition(0, 0);
 					cloud_viewer->setSize(cloud->width, cloud->height);
@@ -176,35 +188,62 @@ public:
 							0, -1, 0);	// Up
 				}
 			}
+			cloud_viewer->spinOnce();
 
-		    boost::shared_ptr<pcl::io::openni2::Image> image;
-			if(image_mutex_.try_lock())
-			{
+			boost::shared_ptr<pcl::io::openni2::Image> image;
+			if (image_mutex_.try_lock()) {
 				image_.swap(image);
-		        image_mutex_.unlock ();
+				image_mutex_.unlock();
 			}
 
-			if(image)
-		      {
-		        if (!image_init && cloud && cloud->width != 0)
-		        {
-		          image_viewer->setPosition (cloud->width, 0);
-		          image_viewer->setSize (cloud->width, cloud->height);
-		          image_init = !image_init;
-		        }
+			if (image) {
+//				if (!image_init && cloud && cloud->width != 0) {
+//					image_viewer->setPosition(cloud->width, 0);
+//					image_viewer->setSize(cloud->width, cloud->height);
+//					image_init = !image_init;
+//				}
 
-		        if (image->getEncoding () == pcl::io::openni2::Image::RGB)
-		          image_viewer->addRGBImage ( (const unsigned char*)image->getData (), image->getWidth (), image->getHeight ());
-		        else
-		          image_viewer->addRGBImage (rgb_data_, image->getWidth (), image->getHeight ());
-		        image_viewer->spinOnce ();
-		      }
+//				if (image->getEncoding() == pcl::io::openni2::Image::RGB)
+//					image_viewer->addRGBImage(
+//							(const unsigned char*) image->getData(),
+//							image->getWidth(), image->getHeight());
+//				else
+//					image_viewer->addRGBImage(rgb_data_, image->getWidth(),
+//							image->getHeight());
+//				image_viewer->spinOnce();
 
+				cv::Mat mat(image->getHeight(), image->getWidth(), CV_8UC3,
+						rgb_data_);
+				cv::cvtColor(mat, mat, cv::COLOR_RGB2BGR);
 
+				if (lastImage.size == mat.size) {
+					cv::absdiff(mat, lastImage, diffImage);
+				}
+				mat.copyTo(lastImage);
+				if (diffImage.cols > 0) {
+					for (int i = 0; i < diffImage.rows; i++)
+						for (int j = 0; j < diffImage.cols; j++) {
+							cv::Vec3b& v = diffImage.at<cv::Vec3b>(i, j);
+							int sum = (int) v[0] + (int) v[1] + (int) v[2];
+							if (sum > 100) {
+								mat.at<cv::Vec3b>(i, j)[2] = 255; //paint it red
+							}
+						}
+					cv::imshow("test", mat);
+				}
+
+			}
+
+			if (!image && !cloud) {
+				cv::waitKey(1);
+				boost::this_thread::sleep(boost::posix_time::milliseconds(10));
+			}
 		}
 		grabber_.stop();
 		cloud_connection.disconnect();
 		image_connection.disconnect();
+		if (rgb_data_)
+			delete[] rgb_data_;
 
 	}
 
@@ -222,6 +261,9 @@ public:
 	boost::shared_ptr<pcl::io::openni2::Image> image_;
 	unsigned char* rgb_data_;
 	unsigned rgb_data_size_;
+	cv::Mat diffImage;
+	cv::Mat diffImageMono;
+	cv::Mat lastImage;
 
 };
 
@@ -246,3 +288,4 @@ int main(int argc, char* argv[]) {
 	v.run();
 	return 0;
 }
+
