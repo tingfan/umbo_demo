@@ -46,9 +46,8 @@ public:
 	typedef Cloud::ConstPtr CloudConstPtr;
 
 	OpenNIChangeViewer(double resolution, int mode, int noise_filter) :
-			cloud_viewer(new pcl::visualization::PCLVisualizer("3D Camera")), image_viewer(
-					new pcl::visualization::ImageViewer("2D Camera")), rgb_data_(
-					0), rgb_data_size_(0) {
+			cloud_viewer(new pcl::visualization::PCLVisualizer("3D Camera")),
+			rgb_data_(0), rgb_data_size_(0) {
 		octree = new pcl::octree::OctreePointCloudChangeDetector<
 				pcl::PointXYZRGBA>(resolution);
 		mode_ = mode;
@@ -167,7 +166,7 @@ public:
 		bool image_init = false;
 
 		grabber_.start();
-		while (!cloud_viewer->wasStopped() && !image_viewer->wasStopped()) {
+		while (!cloud_viewer->wasStopped() && cv::waitKey()) {
 			CloudConstPtr cloud;
 			if (cloud_mutex_.try_lock()) {
 				cloud_.swap(cloud);
@@ -197,20 +196,6 @@ public:
 			}
 
 			if (image) {
-//				if (!image_init && cloud && cloud->width != 0) {
-//					image_viewer->setPosition(cloud->width, 0);
-//					image_viewer->setSize(cloud->width, cloud->height);
-//					image_init = !image_init;
-//				}
-
-//				if (image->getEncoding() == pcl::io::openni2::Image::RGB)
-//					image_viewer->addRGBImage(
-//							(const unsigned char*) image->getData(),
-//							image->getWidth(), image->getHeight());
-//				else
-//					image_viewer->addRGBImage(rgb_data_, image->getWidth(),
-//							image->getHeight());
-//				image_viewer->spinOnce();
 
 				cv::Mat mat(image->getHeight(), image->getWidth(), CV_8UC3,
 						rgb_data_);
@@ -249,7 +234,6 @@ public:
 
 	pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZRGBA> *octree;
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> cloud_viewer;
-	boost::shared_ptr<pcl::visualization::ImageViewer> image_viewer;
 
 	int mode_;
 	int noise_filter_;
