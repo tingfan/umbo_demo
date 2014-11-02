@@ -16,3 +16,17 @@ target_link_libraries(openni2_viewer ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES}
 
 add_executable(tripVolume tripVolume.cpp)
 target_link_libraries(tripVolume ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_VISUALIZATION_LIBRARIES} ${OpenCV_LIBS})
+
+SET(APPS "\${CMAKE_INSTALL_PREFIX}/bin/tripVolume")
+INSTALL(TARGETS tripVolume
+    BUNDLE DESTINATION . COMPONENT Runtime
+    RUNTIME DESTINATION bin COMPONENT Runtime
+    )
+ 
+set(YOUR_PLUGINS "") #empty for now
+set(YOUR_LIBRARY_DIRS "")
+install(CODE "
+  include(BundleUtilities)
+  fixup_bundle(\"${APPS}\" \"\${YOUR_PLUGINS}\" \"${YOUR_LIBRARY_DIRS}\")
+  " COMPONENT Runtime)
+

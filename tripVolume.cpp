@@ -40,16 +40,55 @@ enum {
 	REDDIFF_MODE, ONLYDIFF_MODE, MODE_COUNT
 };
 
+class MyGrabber
+{
+
+	boost::signals2::connection cloud_connection;
+	boost::signals2::connection image_connection;
+	boost::shared_ptr<pcl::io::OpenNI2Grabber> grabber_;
+
+public:
+	MyGrabber(boost::function<void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> cloud_cb,
+			boost::function<void(const boost::shared_ptr<pcl::io::openni2::Image>&)> image_cb)
+	{
+		boost::shared_ptr<pcl::io::openni2::OpenNI2DeviceManager> deviceManager =
+					pcl::io::openni2::OpenNI2DeviceManager::getInstance();
+			if (deviceManager->getNumOfConnectedDevices() > 0) {
+				boost::shared_ptr<pcl::io::openni2::OpenNI2Device> device = deviceManager->getAnyDevice();
+				cout << "Device ID not set, using default device: " << device->getStringID() << endl;
+			}
+			std::string device_id("");
+			pcl::io::OpenNI2Grabber::Mode depth_mode = pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
+			pcl::io::OpenNI2Grabber::Mode image_mode = pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
+			grabber_ .reset(new pcl::io::OpenNI2Grabber(device_id, depth_mode, image_mode));
+			cout << "Framerate:" << grabber_->getFramesPerSecond() << std::endl;
+
+			cloud_connection = grabber_->registerCallback(cloud_cb);
+
+			image_connection = grabber_->registerCallback(image_cb);
+	}
+
+	void start()
+	{
+		grabber_->start();
+	}
+
+	void stop()
+	{
+		grabber_->stop();
+		cloud_connection.disconnect();
+		image_connection.disconnect();
+	}
+};
+
 class OpenNIChangeViewer {
 public:
 	typedef pcl::PointCloud<pcl::PointXYZRGBA> Cloud;
 	typedef Cloud::ConstPtr CloudConstPtr;
 
 	OpenNIChangeViewer(double resolution, int mode, int noise_filter) :
-			cloud_viewer(new pcl::visualization::PCLVisualizer("3D Camera")),
-			rgb_data_(0), rgb_data_size_(0) {
-		octree = new pcl::octree::OctreePointCloudChangeDetector<
-				pcl::PointXYZRGBA>(resolution);
+			cloud_viewer(new pcl::visualization::PCLVisualizer("3D Camera")), rgb_data_(0), rgb_data_size_(0) {
+		octree = new pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZRGBA>(resolution);
 		mode_ = mode;
 		noise_filter_ = noise_filter;
 	}
@@ -65,8 +104,7 @@ public:
 		octree->addPointsFromInputCloud();
 
 		std::cerr << octree->getLeafCount() << " -- ";
-		boost::shared_ptr<std::vector<int> > newPointIdxVector(
-				new std::vector<int>);
+		boost::shared_ptr<std::vector<int> > newPointIdxVector(new std::vector<int>);
 
 		// get a vector of new points, which did not exist in previous buffer
 		octree->getPointIndicesFromNewVoxels(*newPointIdxVector, noise_filter_);
@@ -78,26 +116,23 @@ public:
 		switch (mode_) {
 		case REDDIFF_MODE:
 			//modify those new point to red
-			filtered_cloud.reset(
-					new pcl::PointCloud<pcl::PointXYZRGBA>(*cloud));
+			filtered_cloud.reset(new pcl::PointCloud<pcl::PointXYZRGBA>(*cloud));
 			filtered_cloud->points.reserve(newPointIdxVector->size());
 
 			//set interested ones to red.
-			for (std::vector<int>::iterator it = newPointIdxVector->begin();
-					it != newPointIdxVector->end(); it++) {
-				filtered_cloud->points[*it].rgba = 255 << 16;
-//				pcl::PointXYZRGBA& pt= filtered_cloud->points[*it];
-//				if(pt.z>1.0 && pt.z< 1.5)
-//					pt.rgba = 255 << 16;
-//				cout << pt.x << " " << pt.y << " " << pt.z << endl;
+			for (std::vector<int>::iterator it = newPointIdxVector->begin(); it != newPointIdxVector->end(); it++) {
+				//filtered_cloud->points[*it].rgba = 255 << 16;
+				pcl::PointXYZRGBA& pt = filtered_cloud->points[*it];
+				if (pt.z > 1.0 && pt.z < 1.5)
+					pt.rgba = 255 << 16;
+				//cout << pt.x << " " << pt.y << " " << pt.z << endl;
 			}
 			break;
 		case ONLYDIFF_MODE:
 			filtered_cloud.reset(new pcl::PointCloud<pcl::PointXYZRGBA>);
 			filtered_cloud->points.reserve(newPointIdxVector->size());
 
-			for (std::vector<int>::iterator it = newPointIdxVector->begin();
-					it != newPointIdxVector->end(); it++)
+			for (std::vector<int>::iterator it = newPointIdxVector->begin(); it != newPointIdxVector->end(); it++)
 				filtered_cloud->points.push_back(cloud->points[*it]);
 
 			break;
@@ -111,8 +146,7 @@ public:
 		octree->switchBuffers();
 	}
 
-	void image_callback(
-			const boost::shared_ptr<pcl::io::openni2::Image>& image) {
+	void image_callback(const boost::shared_ptr<pcl::io::openni2::Image>& image) {
 		FPS_CALC("image callback");
 		{
 			boost::mutex::scoped_lock lock(image_mutex_);
@@ -133,40 +167,16 @@ public:
 	}
 
 	void run() {
-		boost::shared_ptr<pcl::io::openni2::OpenNI2DeviceManager> deviceManager =
-				pcl::io::openni2::OpenNI2DeviceManager::getInstance();
-		if (deviceManager->getNumOfConnectedDevices() > 0) {
-			boost::shared_ptr<pcl::io::openni2::OpenNI2Device> device =
-					deviceManager->getAnyDevice();
-			cout << "Device ID not set, using default device: "
-					<< device->getStringID() << endl;
-		}
-		std::string device_id("");
-		pcl::io::OpenNI2Grabber::Mode depth_mode =
-				pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
-		pcl::io::OpenNI2Grabber::Mode image_mode =
-				pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
-		pcl::io::OpenNI2Grabber grabber_(device_id, depth_mode, image_mode);
-//		cout << "Framerate:" << grabber_.getFramesPerSecond() << std::endl;
-
-		boost::function<
-				void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> cloud_cb =
-				boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1);
-		boost::signals2::connection cloud_connection =
-				grabber_.registerCallback(cloud_cb);
-
-		boost::function<void(const boost::shared_ptr<pcl::io::openni2::Image>&)> image_cb =
-				boost::bind(&OpenNIChangeViewer::image_callback, this, _1);
-		boost::signals2::connection image_connection =
-				grabber_.registerCallback(image_cb);
 
 		cloud_viewer->setCameraFieldOfView(1.02259994f);
 
 		bool cloud_init = false;
 		bool image_init = false;
 
+		MyGrabber grabber_(boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1),boost::bind(
+					&OpenNIChangeViewer::image_callback, this, _1));
 		grabber_.start();
-		while (!cloud_viewer->wasStopped() && cv::waitKey()) {
+		while (!cloud_viewer->wasStopped()) {
 			CloudConstPtr cloud;
 			if (cloud_mutex_.try_lock()) {
 				cloud_.swap(cloud);
@@ -182,11 +192,12 @@ public:
 				if (!cloud_viewer->updatePointCloud(cloud, "OpenNICloud")) {
 					cloud_viewer->addPointCloud(cloud, "OpenNICloud");
 					cloud_viewer->resetCameraViewpoint("OpenNICloud");
-					cloud_viewer->setCameraPosition(0, 0, 0,		// Position
+					cloud_viewer->setCameraPosition(0, 0, 0.5,		// Position
 							0, 0, 1,		// Viewpoint
 							0, -1, 0);	// Up
 				}
 			}
+			cloud_viewer->addLine(pcl::PointXYZ(0, 0, 0), pcl::PointXYZ(0, 0, 1), "line", 0);
 			cloud_viewer->spinOnce();
 
 			boost::shared_ptr<pcl::io::openni2::Image> image;
@@ -197,8 +208,7 @@ public:
 
 			if (image) {
 
-				cv::Mat mat(image->getHeight(), image->getWidth(), CV_8UC3,
-						rgb_data_);
+				cv::Mat mat(image->getHeight(), image->getWidth(), CV_8UC3, rgb_data_);
 				cv::cvtColor(mat, mat, cv::COLOR_RGB2BGR);
 
 				if (lastImage.size == mat.size) {
@@ -225,8 +235,7 @@ public:
 			}
 		}
 		grabber_.stop();
-		cloud_connection.disconnect();
-		image_connection.disconnect();
+
 		if (rgb_data_)
 			delete[] rgb_data_;
 
@@ -253,10 +262,9 @@ public:
 
 int main(int argc, char* argv[]) {
 
-	std::cout << "Syntax is " << argv[0]
-			<< " [-r octree resolution] [-d] [-n noise_filter intensity] \n";
+	std::cout << "Syntax is " << argv[0] << " [-r octree resolution] [-d] [-n noise_filter intensity] \n";
 
-	int mode = REDDIFF_MODE;
+	int mode3dDiff = REDDIFF_MODE;
 	int noise_filter = 7;
 	double resolution = 0.01;
 
@@ -265,10 +273,10 @@ int main(int argc, char* argv[]) {
 	pcl::console::parse_argument(argc, argv, "-n", noise_filter);
 
 	if (pcl::console::find_argument(argc, argv, "-d") > 0) {
-		mode = ONLYDIFF_MODE;
+		mode3dDiff = ONLYDIFF_MODE;
 	}
 
-	OpenNIChangeViewer v(resolution, mode, noise_filter);
+	OpenNIChangeViewer v(resolution, mode3dDiff, noise_filter);
 	v.run();
 	return 0;
 }
