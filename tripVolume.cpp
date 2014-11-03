@@ -40,8 +40,7 @@ enum {
 	REDDIFF_MODE, ONLYDIFF_MODE, MODE_COUNT
 };
 
-class MyGrabber
-{
+class MyGrabber {
 
 	boost::signals2::connection cloud_connection;
 	boost::signals2::connection image_connection;
@@ -49,37 +48,105 @@ class MyGrabber
 
 public:
 	MyGrabber(boost::function<void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> cloud_cb,
-			boost::function<void(const boost::shared_ptr<pcl::io::openni2::Image>&)> image_cb)
-	{
+			boost::function<void(const boost::shared_ptr<pcl::io::openni2::Image>&)> image_cb) {
 		boost::shared_ptr<pcl::io::openni2::OpenNI2DeviceManager> deviceManager =
-					pcl::io::openni2::OpenNI2DeviceManager::getInstance();
-			if (deviceManager->getNumOfConnectedDevices() > 0) {
-				boost::shared_ptr<pcl::io::openni2::OpenNI2Device> device = deviceManager->getAnyDevice();
-				cout << "Device ID not set, using default device: " << device->getStringID() << endl;
-			}
-			std::string device_id("");
-			pcl::io::OpenNI2Grabber::Mode depth_mode = pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
-			pcl::io::OpenNI2Grabber::Mode image_mode = pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
-			grabber_ .reset(new pcl::io::OpenNI2Grabber(device_id, depth_mode, image_mode));
-			cout << "Framerate:" << grabber_->getFramesPerSecond() << std::endl;
+				pcl::io::openni2::OpenNI2DeviceManager::getInstance();
+		if (deviceManager->getNumOfConnectedDevices() > 0) {
+			boost::shared_ptr<pcl::io::openni2::OpenNI2Device> device = deviceManager->getAnyDevice();
+			cout << "Device ID not set, using default device: " << device->getStringID() << endl;
+		}
+		std::string device_id("");
+		pcl::io::OpenNI2Grabber::Mode depth_mode = pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
+		pcl::io::OpenNI2Grabber::Mode image_mode = pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
+		grabber_.reset(new pcl::io::OpenNI2Grabber(device_id, depth_mode, image_mode));
+		cout << "Framerate:" << grabber_->getFramesPerSecond() << std::endl;
 
-			cloud_connection = grabber_->registerCallback(cloud_cb);
+		cloud_connection = grabber_->registerCallback(cloud_cb);
 
-			image_connection = grabber_->registerCallback(image_cb);
+		image_connection = grabber_->registerCallback(image_cb);
 	}
 
-	void start()
-	{
+	void start() {
 		grabber_->start();
 	}
 
-	void stop()
-	{
+	void stop() {
 		grabber_->stop();
 		cloud_connection.disconnect();
 		image_connection.disconnect();
 	}
 };
+
+class DummyGrabber {
+	boost::function<void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> cloud_cb;
+	boost::function<void(const boost::shared_ptr<pcl::io::openni2::Image>&)> image_cb;
+	boost::thread generator;
+	bool runThead;
+public:
+	DummyGrabber(boost::function<void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> cloud_cb_,
+			boost::function<void(const boost::shared_ptr<pcl::io::openni2::Image>&)> image_cb_) :
+			cloud_cb(cloud_cb_), image_cb(image_cb_) {
+	}
+
+	void run() {
+		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGBA>);
+		while (runThead) {
+			cloud->clear();
+			float z_offset = 0.1*((float)rand()/RAND_MAX-0.5);
+			for (int i = 0; i < 640*480; i++) {
+				pcl::PointXYZRGBA point;
+				point.x = (float)rand()/RAND_MAX-0.5;
+				point.y = (float)rand()/RAND_MAX-0.5;
+
+				float z_baseline = 1.25+0.1*point.x +0.2*point.y;
+				if(fabs(point.x)<0.3 && fabs(point.y)<0.2)
+				{
+					point.z =  z_offset + z_baseline;
+				}
+				else
+				{
+					point.z = z_baseline;
+				}
+				point.r = 128;
+				point.g = 128;
+				point.b = 128;
+//				point.a = 255;
+				cloud->points.push_back(point);
+			}
+
+			//z-coloring
+			float zmax=std::numeric_limits<float>::min();
+			float zmin=std::numeric_limits<float>::max();
+			for(int i=0;i<cloud->points.size();i++)
+			{
+				zmax = MAX(cloud->points[i].z,zmax);
+				zmin= MIN(cloud->points[i].z,zmin);
+			}
+			for(int i=0;i<cloud->points.size();i++)
+			{
+				cloud->points[i].b = 255.0*(cloud->points[i].z-zmin)/(zmax-zmin);
+			}
+
+			//
+			cloud->width = 1024; //cloud->points.size();
+			cloud->height =768; // 1;
+
+			cloud_cb(cloud);
+
+			boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+		}
+	}
+	void start() {
+		runThead = true;
+		generator = boost::thread(boost::bind(&DummyGrabber::run, this));
+	}
+
+	void stop() {
+		runThead = false;
+		generator.join();
+	}
+}
+;
 
 class OpenNIChangeViewer {
 public:
@@ -173,8 +240,9 @@ public:
 		bool cloud_init = false;
 		bool image_init = false;
 
-		MyGrabber grabber_(boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1),boost::bind(
-					&OpenNIChangeViewer::image_callback, this, _1));
+//		MyGrabber grabber_(boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1), boost::bind(&OpenNIChangeViewer::image_callback, this, _1));
+		DummyGrabber grabber_(boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1),
+				boost::bind(&OpenNIChangeViewer::image_callback, this, _1));
 		grabber_.start();
 		while (!cloud_viewer->wasStopped()) {
 			CloudConstPtr cloud;
@@ -186,18 +254,20 @@ public:
 				if (!cloud_init) {
 					cloud_viewer->setPosition(0, 0);
 					cloud_viewer->setSize(cloud->width, cloud->height);
+					cloud_viewer->setBackgroundColor(0,0,0.1);
 					cloud_init = !cloud_init;
 				}
 
 				if (!cloud_viewer->updatePointCloud(cloud, "OpenNICloud")) {
 					cloud_viewer->addPointCloud(cloud, "OpenNICloud");
 					cloud_viewer->resetCameraViewpoint("OpenNICloud");
-					cloud_viewer->setCameraPosition(0, 0, 0.5,		// Position
+					cloud_viewer->setCameraPosition(0, 0, 0,		// Position
 							0, 0, 1,		// Viewpoint
 							0, -1, 0);	// Up
 				}
 			}
-			cloud_viewer->addLine(pcl::PointXYZ(0, 0, 0), pcl::PointXYZ(0, 0, 1), "line", 0);
+//			cloud_viewer->addLine(pcl::PointXYZ(0, 0, 0), pcl::PointXYZ(0, 0, 1), "line", 0);
+			cloud_viewer->addCoordinateSystem(0,2);
 			cloud_viewer->spinOnce();
 
 			boost::shared_ptr<pcl::io::openni2::Image> image;

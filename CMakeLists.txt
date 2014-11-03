@@ -13,6 +13,8 @@ add_executable(openni2_viewer openni2_viewer.cpp)
 target_link_libraries(openni2_viewer ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_VISUALIZATION_LIBRARIES})
 
 
+#add_executable(qtVtkVisualizer qtVtkVisualizer.cpp)
+#target_link_libraries(qtVtkVisualizer  ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_VISUALIZATION_LIBRARIES} ${OpenCV_LIBS})
 
 add_executable(tripVolume tripVolume.cpp)
 target_link_libraries(tripVolume ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_VISUALIZATION_LIBRARIES} ${OpenCV_LIBS})
