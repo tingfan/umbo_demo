@@ -240,9 +240,8 @@ public:
 		bool cloud_init = false;
 		bool image_init = false;
 
-//		MyGrabber grabber_(boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1), boost::bind(&OpenNIChangeViewer::image_callback, this, _1));
-		DummyGrabber grabber_(boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1),
-				boost::bind(&OpenNIChangeViewer::image_callback, this, _1));
+		MyGrabber grabber_(boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1), boost::bind(&OpenNIChangeViewer::image_callback, this, _1));
+//		DummyGrabber grabber_(boost::bind(&OpenNIChangeViewer::cloud_cb_, this, _1), boost::bind(&OpenNIChangeViewer::image_callback, this, _1));
 		grabber_.start();
 		while (!cloud_viewer->wasStopped()) {
 			CloudConstPtr cloud;
@@ -255,19 +254,19 @@ public:
 					cloud_viewer->setPosition(0, 0);
 					cloud_viewer->setSize(cloud->width, cloud->height);
 					cloud_viewer->setBackgroundColor(0,0,0.1);
+					cloud_viewer->addCoordinateSystem(0.1, "OpenNICloud");
 					cloud_init = !cloud_init;
 				}
 
 				if (!cloud_viewer->updatePointCloud(cloud, "OpenNICloud")) {
 					cloud_viewer->addPointCloud(cloud, "OpenNICloud");
 					cloud_viewer->resetCameraViewpoint("OpenNICloud");
-					cloud_viewer->setCameraPosition(0, 0, 0,		// Position
+					cloud_viewer->setCameraPosition(0, 0, -0.1,		// Position
 							0, 0, 1,		// Viewpoint
 							0, -1, 0);	// Up
 				}
 			}
 //			cloud_viewer->addLine(pcl::PointXYZ(0, 0, 0), pcl::PointXYZ(0, 0, 1), "line", 0);
-			cloud_viewer->addCoordinateSystem(0,2);
 			cloud_viewer->spinOnce();
 
 			boost::shared_ptr<pcl::io::openni2::Image> image;

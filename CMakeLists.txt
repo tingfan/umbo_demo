@@ -3,7 +3,7 @@ project(umbo_demo)
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 message("${CMAKE_MODULE_PATH}")
 set(CMAKE_MODULE_PATH "/usr/local/share/pcl-1.8/")
-find_package(PCL REQUIRED COMPONENTS common io visualization)
+find_package(PCL REQUIRED COMPONENTS common io visualization filters people)
 find_package( OpenCV REQUIRED )
 
 include_directories(${PCL_INCLUDE_DIRS})
@@ -18,6 +18,9 @@ target_link_libraries(openni2_viewer ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES}
 
 add_executable(tripVolume tripVolume.cpp)
 target_link_libraries(tripVolume ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_VISUALIZATION_LIBRARIES} ${OpenCV_LIBS})
+
+add_executable(human_detection MACOSX_BUNDLE human_detection.cpp)
+target_link_libraries(human_detection ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_VISUALIZATION_LIBRARIES} ${PCL_FILTERS_LIBRARIES} ${PCL_PEOPLE_LIBRARIES} ${OpenCV_LIBS} )
 
 SET(APPS "\${CMAKE_INSTALL_PREFIX}/bin/tripVolume")
 INSTALL(TARGETS tripVolume
