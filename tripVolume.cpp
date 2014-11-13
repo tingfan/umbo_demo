@@ -55,7 +55,7 @@ public:
 			boost::shared_ptr<pcl::io::openni2::OpenNI2Device> device = deviceManager->getAnyDevice();
 			cout << "Device ID not set, using default device: " << device->getStringID() << endl;
 		}
-		std::string device_id("");
+		std::string device_id("#1");
 		pcl::io::OpenNI2Grabber::Mode depth_mode = pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
 		pcl::io::OpenNI2Grabber::Mode image_mode = pcl::io::OpenNI2Grabber::OpenNI_Default_Mode;
 		grabber_.reset(new pcl::io::OpenNI2Grabber(device_id, depth_mode, image_mode));
@@ -232,10 +232,36 @@ public:
 		image_->fillRGB(image_->getWidth(), image_->getHeight(), rgb_data_);
 //		}
 	}
+	void
+	keyboard_callback (const pcl::visualization::KeyboardEvent& event, void*)
+	{
+	  if (event.getKeyCode ())
+	  {
+	    cout << "the key \'" << event.getKeyCode () << "\' (" << event.getKeyCode () << ") was";
+
+	    if(event.getKeyCode() == 'r')
+	    {
+//	    	cloud_viewer->resetCamera();
+	    	cloud_viewer->setCameraPosition(
+	    			0,0,-0.5, //pos
+	    			0, 0, 1, //view
+	    			0, -1, 0, //viewup
+	    			0);
+	    	cloud_viewer->updateCamera();
+
+	    }
+	  }else
+	    cout << "the special key \'" << event.getKeySym () << "\' was";
+	  if (event.keyDown ())
+	    cout << " pressed" << endl;
+	  else
+	    cout << " released" << endl;
+	}
 
 	void run() {
 
 		cloud_viewer->setCameraFieldOfView(1.02259994f);
+		cloud_viewer->registerKeyboardCallback(&OpenNIChangeViewer::keyboard_callback,*this);
 
 		bool cloud_init = false;
 		bool image_init = false;
@@ -266,7 +292,11 @@ public:
 							0, -1, 0);	// Up
 				}
 			}
-//			cloud_viewer->addLine(pcl::PointXYZ(0, 0, 0), pcl::PointXYZ(0, 0, 1), "line", 0);
+			cloud_viewer->removeShape ("box");
+			cloud_viewer->addCube(-1.0, 1.0, -1.0, 1.0, 1.0, 1.5, 1.0, 1.0, 1.0, "box");
+			cloud_viewer->setShapeRenderingProperties (pcl::visualization::PCL_VISUALIZER_COLOR, 0.0, 1.0, 0.0, "box");
+			cloud_viewer->setShapeRenderingProperties (pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 2, "box");
+
 			cloud_viewer->spinOnce();
 
 			boost::shared_ptr<pcl::io::openni2::Image> image;
@@ -293,7 +323,7 @@ public:
 								mat.at<cv::Vec3b>(i, j)[2] = 255; //paint it red
 							}
 						}
-					cv::imshow("test", mat);
+					cv::imshow("2D Camera", mat);
 				}
 
 			}

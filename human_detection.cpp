@@ -57,13 +57,15 @@ typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
 // PCL viewer //
-pcl::visualization::PCLVisualizer viewer("PCL Viewer");
+pcl::visualization::PCLVisualizer viewerGround("PCL Viewer");
+
+pcl::visualization::Camera camera;
 
 // Mutex: //
 boost::mutex cloud_mutex;
 
 enum { COLS = 640, ROWS = 480 };
-
+//enum { COLS = 320, ROWS = 240 };
 int print_help()
 {
   cout << "*******************************************************" << std::endl;
@@ -110,11 +112,22 @@ pp_callback (const pcl::visualization::PointPickingEvent& event, void* args)
 }
 
 void
-keyboard_callback (const pcl::visualization::KeyboardEvent& event, void*)
+keyboard_callback (const pcl::visualization::KeyboardEvent& event, void* _viewer)
 {
+  pcl::visualization::PCLVisualizer* viewer=(pcl::visualization::PCLVisualizer*)_viewer;
   if (event.getKeyCode ())
+  {
     cout << "the key \'" << event.getKeyCode () << "\' (" << event.getKeyCode () << ") was";
-  else
+
+    if(event.getKeyCode() == 'r')
+    {
+		viewer->setCameraPosition(0, 0, -2,		// Position
+							0, 0, 1,		// Viewpoint
+							0, -1, 0,
+							0);	// Up
+		viewer->updateCamera();
+    }
+  }else
     cout << "the special key \'" << event.getKeySym () << "\' was";
   if (event.keyDown ())
     cout << " pressed" << endl;
@@ -132,6 +145,8 @@ int main (int argc, char** argv)
   float min_confidence = -1.5;
   float min_height = 1.0;
   float max_height = 2.0;
+  float min_width = 0.1;
+  float max_width = 8.0;
   float voxel_size = 0.06;
   Eigen::Matrix3f rgb_intrinsics_matrix;
   rgb_intrinsics_matrix << 525, 0.0, 319.5, 0.0, 525, 239.5, 0.0, 0.0, 1.0; // Kinect RGB camera intrinsics
@@ -146,9 +161,10 @@ int main (int argc, char** argv)
   PointCloudT::Ptr cloud (new PointCloudT);
   bool new_cloud_available_flag = false;
   pcl::Grabber* interface = new pcl::io::OpenNI2Grabber();
-  boost::function<void (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> f =
-      boost::bind (&cloud_cb_, _1, cloud, &new_cloud_available_flag);
-  interface->registerCallback (f);
+//  pcl::Grabber* interface = new pcl::io::OpenNI2Grabber("#2",pcl::io::OpenNI2Grabber::OpenNI_Default_Mode,pcl::io::OpenNI2Grabber::OpenNI_Default_Mode);
+//  pcl::Grabber* interface = new pcl::io::OpenNI2Grabber("",pcl::io::OpenNI2Grabber::OpenNI_QVGA_30Hz,pcl::io::OpenNI2Grabber::OpenNI_QVGA_30Hz);
+  boost::function<void (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> cloud_cb = boost::bind (&cloud_cb_, _1, cloud, &new_cloud_available_flag);
+  interface->registerCallback (cloud_cb);
   interface->start ();
 
   // Wait for the first frame:
@@ -160,20 +176,20 @@ int main (int argc, char** argv)
 
   // Display pointcloud:
   pcl::visualization::PointCloudColorHandlerRGBField<PointT> rgb(cloud);
-  viewer.addPointCloud<PointT> (cloud, rgb, "input_cloud");
-  viewer.setCameraPosition(0,0,-2,0,-1,0,0);
+  viewerGround.addPointCloud<PointT> (cloud, rgb, "input_cloud");
+  viewerGround.setCameraPosition(0,0,-2,0,-1,0,0);
 
   // Add point picking callback to viewer
   struct callback_args cb_args;
   PointCloudT::Ptr clicked_points_3d (new PointCloudT);
   cb_args.clicked_points_3d = clicked_points_3d;
-  cb_args.viewerPtr = pcl::visualization::PCLVisualizer::Ptr(&viewer);
-  viewer.registerPointPickingCallback (pp_callback, (void*)&cb_args);
-  viewer.registerKeyboardCallback(keyboard_callback);
+  cb_args.viewerPtr = pcl::visualization::PCLVisualizer::Ptr(&viewerGround);
+  viewerGround.registerPointPickingCallback (pp_callback, (void*)&cb_args);
+//  viewer.registerKeyboardCallback(keyboard_callback);
   std::cout << "Shift+click on three floor points, then press 'Q'..." << std::endl;
 
   // Spin until 'Q' is pressed:
-  viewer.spin();
+  viewerGround.spin();
   std::cout << "done." << std::endl;
   
   cloud_mutex.unlock ();    
@@ -189,8 +205,12 @@ int main (int argc, char** argv)
   std::cout << "Ground plane: " << ground_coeffs(0) << " " << ground_coeffs(1) << " " << ground_coeffs(2) << " " << ground_coeffs(3) << std::endl;
 
   // Initialize new viewer:
-  pcl::visualization::PCLVisualizer viewer("PCL Viewer");          // viewer initialization
-  viewer.setCameraPosition(0,0,-2,0,-1,0,0);
+  pcl::visualization::PCLVisualizer viewer("Human Detection");          // viewer initialization
+  viewer.registerKeyboardCallback(keyboard_callback, (void*)&viewer);
+  viewer.setCameraPosition(0,0,-2,
+		  0,0,1,
+		  0,-1,0,
+		  0);
 
   // Create classifier for people detection:  
   pcl::people::PersonClassifier<pcl::RGB> person_classifier;
@@ -201,12 +221,17 @@ int main (int argc, char** argv)
   people_detector.setVoxelSize(voxel_size);                        // set the voxel size
   people_detector.setIntrinsics(rgb_intrinsics_matrix);            // set RGB camera intrinsic parameters
   people_detector.setClassifier(person_classifier);                // set person classifier
+  people_detector.setPersonClusterLimits(min_height, max_height, min_width, max_width);
 //  people_detector.setHeightLimits(min_height, max_height);         // set person classifier
-//  people_detector.setSensorPortraitOrientation(true);             // set sensor orientation to vertical
+ // people_detector.setSensorPortraitOrientation(true);             // set sensor orientation to vertical
+  people_detector.setFOV(0, 5.0);//2m max
 
   // For timing:
   static unsigned count = 0;
   static double last = pcl::getTime ();
+
+
+  viewer.getCameraParameters(camera);
 
   // Main loop:
   while (!viewer.wasStopped())

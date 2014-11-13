@@ -16,7 +16,7 @@ target_link_libraries(openni2_viewer ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES}
 #add_executable(qtVtkVisualizer qtVtkVisualizer.cpp)
 #target_link_libraries(qtVtkVisualizer  ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_VISUALIZATION_LIBRARIES} ${OpenCV_LIBS})
 
-add_executable(tripVolume tripVolume.cpp)
+add_executable(tripVolume MACOSX_BUNDLE tripVolume.cpp)
 target_link_libraries(tripVolume ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_VISUALIZATION_LIBRARIES} ${OpenCV_LIBS})
 
 add_executable(human_detection MACOSX_BUNDLE human_detection.cpp)
